@@ -5,6 +5,13 @@ name: "Build Caller-ID Test"
 # change can be tested locally. Triggered automatically on push to the
 # feature branch (and manually via the Actions tab). Safe to delete once
 # the feature is merged.
+#
+# This fork does not have the upstream's signing secrets, and the reusable
+# build.yml always exports (empty) signing env vars. For Windows/Linux that is
+# harmless once updater artifacts + the Windows signCommand are disabled via the
+# tauri config override. For macOS the empty APPLE_CERTIFICATE/APPLE_SIGNING_IDENTITY
+# env vars make tauri attempt (and fail) a codesign, so macOS is built by a
+# dedicated inline job that sets no signing env at all.
 on:
   push:
     branches:
@@ -19,14 +26,12 @@ permissions:
   contents: write
 
 jobs:
+  # Windows + Linux via the existing reusable build workflow.
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            build-args: "--target aarch64-apple-darwin"
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             build-args: "--target x86_64-pc-windows-msvc"
@@ -40,16 +45,72 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
-      # Disable updater-artifact creation for this test build. build.yml always
-      # feeds TAURI_SIGNING_PRIVATE_KEY from repo secrets, and this fork's key is
-      # not a valid signing key, so signing the updater artifact fails *after* the
-      # installers are already built. Skipping updater artifacts avoids that step
-      # entirely while still producing the .dmg/.msi/.exe/.deb/.AppImage/.rpm.
-      # Path is relative to the tauri projectPath (frontend/), which is how
-      # tauri-action and the tauri CLI resolve the --config file.
+      # Disable updater artifacts (avoids Tauri updater signing with the fork's
+      # invalid key) and the Windows signCommand (DigiCert). Path is relative to
+      # the tauri projectPath (frontend/). See ci-test-overrides.json.
       build-args: ${{ matrix.build-args }} -c src-tauri/ci-test-overrides.json
       asset-prefix: meetily-callerid
       upload-artifacts: true
       sign-binaries: false
       ref: ${{ github.ref }}
     secrets: inherit
+
+  # macOS (Apple Silicon) built inline WITHOUT any signing env, so tauri does a
+  # plain unsigned build instead of trying to import an empty certificate.
+  build-macos:
+    name: build (macOS aarch64 unsigned)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          key: macos-aarch64-callerid-inline
+
+      - name: Build llama-helper sidecar (Metal)
+        run: |
+          cargo build --release -p llama-helper --features metal
+          mkdir -p frontend/src-tauri/binaries
+          cp target/release/llama-helper frontend/src-tauri/binaries/llama-helper-aarch64-apple-darwin
+          ls -la frontend/src-tauri/binaries/
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Build Tauri app (unsigned, no signing env)
+        working-directory: frontend
+        run: pnpm tauri build --target aarch64-apple-darwin -c src-tauri/ci-test-overrides.json
+
+      - name: Upload macOS artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meetily-callerid-macos-aarch64-apple-darwin
+          path: |
+            target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            target/aarch64-apple-darwin/release/bundle/macos/*.app
+          if-no-files-found: warn
+          retention-days: 30
