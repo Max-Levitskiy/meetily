@@ -45,8 +45,9 @@ jobs:
       # not a valid signing key, so signing the updater artifact fails *after* the
       # installers are already built. Skipping updater artifacts avoids that step
       # entirely while still producing the .dmg/.msi/.exe/.deb/.AppImage/.rpm.
-      # Absolute path so it resolves regardless of the tauri build working dir.
-      build-args: ${{ matrix.build-args }} -c ${{ github.workspace }}/frontend/src-tauri/ci-test-overrides.json
+      # Path is relative to the tauri projectPath (frontend/), which is how
+      # tauri-action and the tauri CLI resolve the --config file.
+      build-args: ${{ matrix.build-args }} -c src-tauri/ci-test-overrides.json
       asset-prefix: meetily-callerid
       upload-artifacts: true
       sign-binaries: false
