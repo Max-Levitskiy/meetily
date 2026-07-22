@@ -40,7 +40,13 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
-      build-args: ${{ matrix.build-args }}
+      # Disable updater-artifact creation for this test build. build.yml always
+      # feeds TAURI_SIGNING_PRIVATE_KEY from repo secrets, and this fork's key is
+      # not a valid signing key, so signing the updater artifact fails *after* the
+      # installers are already built. Skipping updater artifacts avoids that step
+      # entirely while still producing the .dmg/.msi/.exe/.deb/.AppImage/.rpm.
+      # Absolute path so it resolves regardless of the tauri build working dir.
+      build-args: ${{ matrix.build-args }} -c ${{ github.workspace }}/frontend/src-tauri/ci-test-overrides.json
       asset-prefix: meetily-callerid
       upload-artifacts: true
       sign-binaries: false
