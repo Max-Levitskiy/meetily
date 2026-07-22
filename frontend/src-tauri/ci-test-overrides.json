@@ -4,6 +4,9 @@
     "macOS": {
       "signingIdentity": null,
       "hardenedRuntime": false
+    },
+    "windows": {
+      "signCommand": null
     }
   }
 }
