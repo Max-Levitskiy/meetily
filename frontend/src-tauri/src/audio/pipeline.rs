@@ -694,6 +694,13 @@ pub struct AudioPipeline {
     mixer: ProfessionalAudioMixer,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
+    // CALLER IDENTIFICATION: per-source audio energy accumulated since the last
+    // VAD segment was attributed. Because mic + system audio are mixed into a
+    // single stream before VAD/transcription, the raw source is otherwise lost.
+    // We compare accumulated mic vs system energy to tag each speech segment with
+    // its dominant source ("mic" = local user, "system" = remote participant).
+    mic_energy_acc: f64,
+    sys_energy_acc: f64,
 }
 
 impl AudioPipeline {
@@ -760,7 +767,29 @@ impl AudioPipeline {
             ring_buffer,
             mixer,
             recording_sender_for_mixed: None,  // Will be set by manager
+            // Caller identification energy accumulators start empty
+            mic_energy_acc: 0.0,
+            sys_energy_acc: 0.0,
         }
+    }
+
+    /// Determine which audio source (microphone vs system) dominated the audio
+    /// accumulated since the previous VAD segment, then reset the accumulators.
+    ///
+    /// This is the core of caller identification: the mixer combines mic and
+    /// system audio into one waveform before VAD runs, so we recover the source
+    /// by comparing the energy each stream contributed to the windows that fed
+    /// the just-completed speech. `mic` maps to the local user, `system` to the
+    /// remote participant(s) coming through the speakers.
+    fn take_dominant_source(&mut self) -> DeviceType {
+        let source = if self.sys_energy_acc > self.mic_energy_acc {
+            DeviceType::System
+        } else {
+            DeviceType::Microphone
+        };
+        self.mic_energy_acc = 0.0;
+        self.sys_energy_acc = 0.0;
+        source
     }
 
     /// Run the VAD-driven audio processing pipeline
@@ -822,6 +851,24 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // CALLER ID: accumulate per-source energy (sum of squared
+                            // amplitudes) for this window BEFORE mixing destroys the
+                            // separation, so we can tag each speech segment with its
+                            // dominant source. A silence gate skips near-silent windows:
+                            // the microphone is loudness-normalized (boosted) while system
+                            // audio is raw, so counting ambient mic noise during gaps would
+                            // bias attribution toward "mic". Only windows with real activity
+                            // in at least one source contribute to the comparison.
+                            let mic_energy: f64 = mic_window.iter().map(|&s| (s as f64) * (s as f64)).sum();
+                            let sys_energy: f64 = sys_window.iter().map(|&s| (s as f64) * (s as f64)).sum();
+                            let window_len = mic_window.len().max(sys_window.len()).max(1) as f64;
+                            // Activity floor ≈ -40 dBFS RMS (mean-square 1e-4) per source.
+                            let activity_floor = 1e-4 * window_len;
+                            if mic_energy.max(sys_energy) >= activity_floor {
+                                self.mic_energy_acc += mic_energy;
+                                self.sys_energy_acc += sys_energy;
+                            }
+
                             // Simple mixing without aggressive ducking
                             let mixed_clean = self.mixer.mix_window(&mic_window, &sys_window);
 
@@ -834,19 +881,26 @@ impl AudioPipeline {
                             // STEP 3: Send mixed audio for transcription (VAD + Whisper)
                             match self.vad_processor.process_audio(&mixed_with_gain) {
                                 Ok(speech_segments) => {
+                                    // CALLER ID: attribute this batch of completed segments to
+                                    // the dominant source since the previous segment, then reset.
+                                    let segment_source = if speech_segments.is_empty() {
+                                        DeviceType::Microphone
+                                    } else {
+                                        self.take_dominant_source()
+                                    };
                                     for segment in speech_segments {
                                         let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
 
                                         if segment.samples.len() >= 800 {  // Minimum 50ms at 16kHz - matches Parakeet capability
-                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples",
-                                                  duration_ms, segment.samples.len());
+                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples, source={:?}",
+                                                  duration_ms, segment.samples.len(), segment_source);
 
                                             let transcription_chunk = AudioChunk {
                                                 data: segment.samples,
                                                 sample_rate: 16000,
                                                 timestamp: segment.start_timestamp_ms / 1000.0,
                                                 chunk_id: self.chunk_id_counter,
-                                                device_type: DeviceType::Microphone,  // Mixed audio
+                                                device_type: segment_source.clone(),  // Dominant source (mic/system)
                                             };
 
                                             if let Err(e) = self.transcription_sender.send(transcription_chunk) {
@@ -903,20 +957,26 @@ impl AudioPipeline {
         // Flush any remaining audio from VAD processor and send segments to transcription
         match self.vad_processor.flush() {
             Ok(final_segments) => {
+                // CALLER ID: attribute the final flushed segments to the dominant source.
+                let segment_source = if final_segments.is_empty() {
+                    DeviceType::Microphone
+                } else {
+                    self.take_dominant_source()
+                };
                 for segment in final_segments {
                     let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
 
                     // Send segments >= 50ms (800 samples at 16kHz) - matches main pipeline filter
                     if segment.samples.len() >= 800 {
-                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
-                              duration_ms, segment.samples.len());
+                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples, source={:?}",
+                              duration_ms, segment.samples.len(), segment_source);
 
                         let transcription_chunk = AudioChunk {
                             data: segment.samples,
                             sample_rate: 16000,
                             timestamp: segment.start_timestamp_ms / 1000.0,
                             chunk_id: self.chunk_id_counter,
-                            device_type: DeviceType::Microphone,
+                            device_type: segment_source.clone(),
                         };
 
                         if let Err(e) = self.transcription_sender.send(transcription_chunk) {

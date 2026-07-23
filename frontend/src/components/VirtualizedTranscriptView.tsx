@@ -63,12 +63,26 @@ function cleanStopWords(text: string): string {
     return cleanedText.replace(/\s+/g, ' ').trim();
 }
 
+// CALLER IDENTIFICATION: map the raw audio source to a human-friendly label + style.
+// "mic" = the local user's microphone, "system" = remote participants via system audio.
+function getSpeakerBadge(speaker?: string): { label: string; className: string } | null {
+    switch (speaker) {
+        case 'mic':
+            return { label: 'You', className: 'bg-blue-100 text-blue-700 border border-blue-200' };
+        case 'system':
+            return { label: 'Participant', className: 'bg-purple-100 text-purple-700 border border-purple-200' };
+        default:
+            return null;
+    }
+}
+
 // Memoized transcript segment component
 const TranscriptSegment = memo(function TranscriptSegment({
     id,
     timestamp,
     text,
     confidence,
+    speaker,
     isStreaming,
     showConfidence,
 }: {
@@ -76,10 +90,12 @@ const TranscriptSegment = memo(function TranscriptSegment({
     timestamp: number;
     text: string;
     confidence?: number;
+    speaker?: string;
     isStreaming: boolean;
     showConfidence: boolean;
 }) {
     const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+    const speakerBadge = getSpeakerBadge(speaker);
 
     return (
         <div id={`segment-${id}`} className="mb-3">
@@ -97,6 +113,13 @@ const TranscriptSegment = memo(function TranscriptSegment({
                     </TooltipContent>
                 </Tooltip>
                 <div className="flex-1">
+                    {speakerBadge && (
+                        <span
+                            className={`inline-block mb-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${speakerBadge.className}`}
+                        >
+                            {speakerBadge.label}
+                        </span>
+                    )}
                     {isStreaming ? (
                         <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
                             <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
@@ -294,6 +317,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         timestamp={segment.timestamp}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
+                                        speaker={segment.speaker}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
                                     />
@@ -350,6 +374,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         timestamp={segment.timestamp}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
+                                        speaker={segment.speaker}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
                                     />

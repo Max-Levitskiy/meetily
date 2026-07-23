@@ -16,12 +16,16 @@ export interface Transcript {
   audio_start_time?: number; // Seconds from recording start (e.g., 125.3)
   audio_end_time?: number;   // Seconds from recording start (e.g., 128.6)
   duration?: number;          // Segment duration in seconds (e.g., 3.3)
+  // CALLER IDENTIFICATION: "mic" (local user) or "system" (remote participant)
+  speaker?: string;
 }
 
 export interface TranscriptUpdate {
   text: string;
   timestamp: string; // Wall-clock time for reference
   source: string;
+  // CALLER IDENTIFICATION: "mic" (local user) or "system" (remote participant)
+  speaker?: string;
   sequence_id: number;
   chunk_start_time: number; // Legacy field
   is_partial: boolean;
@@ -107,4 +111,6 @@ export interface TranscriptSegmentData {
   endTime?: number; // audio_end_time in seconds
   text: string;
   confidence?: number;
+  // CALLER IDENTIFICATION: "mic" (local user) or "system" (remote participant)
+  speaker?: string;
 }

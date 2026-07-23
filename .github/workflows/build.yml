@@ -662,9 +662,13 @@ jobs:
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.platform }}-${{ inputs.target }}
           path: |
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/deb/*.deb
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/appimage/*.AppImage
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/rpm/*.rpm
             target/${{ steps.build-profile.outputs.profile }}/bundle/deb/*.deb
             target/${{ steps.build-profile.outputs.profile }}/bundle/appimage/*.AppImage
             target/${{ steps.build-profile.outputs.profile }}/bundle/rpm/*.rpm
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Upload artifacts (Windows)
@@ -673,8 +677,13 @@ jobs:
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi.sig
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe
+            target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe.sig
             target/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi
             target/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi.sig
             target/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe
             target/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe.sig
+          if-no-files-found: warn
           retention-days: 30
