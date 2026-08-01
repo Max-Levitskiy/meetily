@@ -2,8 +2,16 @@
 
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, Save, Loader2, Search, FolderOpen } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Copy, Save, Loader2, Search, FolderOpen, Download } from 'lucide-react';
 import Analytics from '@/lib/analytics';
+import type { ExportScope } from '@/hooks/meeting-details/useExportOperations';
 
 interface SummaryUpdaterButtonGroupProps {
   isSaving: boolean;
@@ -13,6 +21,9 @@ interface SummaryUpdaterButtonGroupProps {
   onFind?: () => void;
   onOpenFolder: () => Promise<void>;
   hasSummary: boolean;
+  hasTranscript: boolean;
+  isExporting: boolean;
+  onExport: (scope: ExportScope) => Promise<void>;
 }
 
 export function SummaryUpdaterButtonGroup({
@@ -22,8 +33,15 @@ export function SummaryUpdaterButtonGroup({
   onCopy,
   onFind,
   onOpenFolder,
-  hasSummary
+  hasSummary,
+  hasTranscript,
+  isExporting,
+  onExport
 }: SummaryUpdaterButtonGroupProps) {
+  const handleExport = (scope: ExportScope) => {
+    Analytics.trackButtonClick(`export_markdown_${scope}`, 'meeting_details');
+    onExport(scope);
+  };
   return (
     <ButtonGroup>
       {/* Save button */}
@@ -66,6 +84,43 @@ export function SummaryUpdaterButtonGroup({
         <Copy />
         <span className="hidden lg:inline">Copy</span>
       </Button>
+
+      {/* Export button */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            title="Export meeting as Markdown"
+            disabled={isExporting || (!hasSummary && !hasTranscript)}
+            className="cursor-pointer"
+          >
+            {isExporting ? <Loader2 className="animate-spin" /> : <Download />}
+            <span className="hidden lg:inline">Export</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Export as Markdown</DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleExport('full')}
+            disabled={!hasSummary && !hasTranscript}
+          >
+            Summary &amp; transcript
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleExport('summary')}
+            disabled={!hasSummary}
+          >
+            Summary only
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleExport('transcript')}
+            disabled={!hasTranscript}
+          >
+            Transcript only
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Find button */}
       {/* {onFind && (
