@@ -15,6 +15,7 @@ import { useMeetingData } from '@/hooks/meeting-details/useMeetingData';
 import { useSummaryGeneration } from '@/hooks/meeting-details/useSummaryGeneration';
 import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
+import { useExportOperations } from '@/hooks/meeting-details/useExportOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
 import { useConfig } from '@/contexts/ConfigContext';
 
@@ -134,6 +135,18 @@ export default function PageContent({
     meeting,
   });
 
+  const exportOperations = useExportOperations({
+    meeting,
+    // Export reads from the database, so pending edits are flushed first.
+    ensureSaved: async () => {
+      const hasPendingEdits =
+        meetingData.isTitleDirty || !!meetingData.blockNoteSummaryRef.current?.isDirty;
+      if (hasPendingEdits) {
+        await meetingData.saveAllChanges();
+      }
+    },
+  });
+
   // Track page view
   useEffect(() => {
     Analytics.trackPageView('meeting_details');
@@ -226,6 +239,8 @@ export default function PageContent({
           onTemplateSelect={templates.handleTemplateSelection}
           isModelConfigLoading={false}
           onOpenModelSettings={handleRegisterModalOpen}
+          isExporting={exportOperations.isExporting}
+          onExport={exportOperations.exportMarkdown}
         />
       </div>
     </motion.div>

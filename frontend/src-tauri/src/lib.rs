@@ -41,6 +41,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod export;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -630,6 +631,9 @@ pub fn run() {
             openai::openai::get_openai_models,
             anthropic::anthropic::get_anthropic_models,
             groq::groq::get_groq_models,
+            // Meeting export commands
+            export::commands::export_meeting_markdown,
+            export::commands::save_meeting_markdown,
             api::api_get_meetings,
             api::api_search_transcripts,
             api::api_get_profile,

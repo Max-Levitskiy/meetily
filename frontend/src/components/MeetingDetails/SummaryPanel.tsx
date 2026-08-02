@@ -7,6 +7,7 @@ import { EmptyStateSummary } from '@/components/EmptyStateSummary';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SummaryGeneratorButtonGroup } from './SummaryGeneratorButtonGroup';
 import { SummaryUpdaterButtonGroup } from './SummaryUpdaterButtonGroup';
+import type { ExportScope } from '@/hooks/meeting-details/useExportOperations';
 import Analytics from '@/lib/analytics';
 import { useEffect, useRef, useState, RefObject } from 'react';
 import { toast } from 'sonner';
@@ -60,6 +61,8 @@ interface SummaryPanelProps {
   onTemplateSelect: (templateId: string, templateName: string) => void;
   isModelConfigLoading?: boolean;
   onOpenModelSettings?: (openFn: () => void) => void;
+  isExporting: boolean;
+  onExport: (scope: ExportScope) => Promise<void>;
 }
 
 export function SummaryPanel({
@@ -95,7 +98,9 @@ export function SummaryPanel({
   selectedTemplate,
   onTemplateSelect,
   isModelConfigLoading = false,
-  onOpenModelSettings
+  onOpenModelSettings,
+  isExporting,
+  onExport
 }: SummaryPanelProps) {
   const [summaryLang, setSummaryLang] = useState<string | null>(null);
   const [summaryLangStorage, setSummaryLangStorage] = useState<SummaryLanguageStorage>('metadata');
@@ -301,6 +306,9 @@ export function SummaryPanel({
                 }}
                 onOpenFolder={onOpenFolder}
                 hasSummary={!!aiSummary}
+                hasTranscript={transcripts.length > 0}
+                isExporting={isExporting}
+                onExport={onExport}
               />
             </div>
           </div>
