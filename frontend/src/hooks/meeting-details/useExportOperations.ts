@@ -2,28 +2,14 @@ import { useCallback, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
+import { fileNameOf, optionsForScope, type ExportScope } from '@/lib/meeting-export';
 
-/** Which parts of the meeting an export should contain. */
-export type ExportScope = 'full' | 'summary' | 'transcript';
-
-/**
- * Mirrors the Rust `ExportOptions`. Omitted fields fall back to their defaults
- * on the Rust side, so only the toggles that vary per scope are sent.
- */
-const SCOPE_OPTIONS: Record<ExportScope, { includeSummary: boolean; includeTranscript: boolean }> = {
-  full: { includeSummary: true, includeTranscript: true },
-  summary: { includeSummary: true, includeTranscript: false },
-  transcript: { includeSummary: false, includeTranscript: true },
-};
+export type { ExportScope };
 
 interface UseExportOperationsProps {
   meeting: { id: string };
   /** Flushes pending editor edits so the export matches what is on screen. */
   ensureSaved?: () => Promise<void>;
-}
-
-function fileNameOf(path: string): string {
-  return path.split(/[\\/]/).pop() || path;
 }
 
 export function useExportOperations({ meeting, ensureSaved }: UseExportOperationsProps) {
@@ -40,7 +26,7 @@ export function useExportOperations({ meeting, ensureSaved }: UseExportOperation
 
       const savedPath = await invoke<string | null>('save_meeting_markdown', {
         meetingId: meeting.id,
-        options: SCOPE_OPTIONS[scope],
+        options: optionsForScope(scope),
       });
 
       // A null path means the user dismissed the save dialog.
